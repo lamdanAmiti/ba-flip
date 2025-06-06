@@ -424,8 +424,8 @@ app.post('/upload', upload.single('fontFile'), async (req, res) => {
     });
 
     // Write the corrected font
-    const arrayBuffer = newFont.toArrayBuffer();
-    const outputBuffer = Buffer.from(arrayBuffer);
+    const outputArrayBuffer = newFont.toArrayBuffer();
+    const outputBuffer = Buffer.from(outputArrayBuffer);
     fs.writeFileSync(outputPath, outputBuffer);
     
     console.log(`Font saved to: ${outputPath} (${outputBuffer.length} bytes)`);
