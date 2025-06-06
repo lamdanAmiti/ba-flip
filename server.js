@@ -463,9 +463,21 @@ app.post('/upload', upload.single('fontFile'), async (req, res) => {
     
     console.log(`Swapped ${swappedCount} Hebrew character pairs`);
 
+    // Determine the new font family name
+    let originalFamilyName = font.names.fontFamily?.en || font.names.fontFamily || 'Unknown Font';
+    let newFamilyName;
+    
+    // Special handling for BAWS fonts - remove "WS" and keep "BA"
+    if (originalFamilyName.includes('BAWS')) {
+      newFamilyName = originalFamilyName.replace('BAWS', 'BA');
+      console.log(`BAWS font detected: "${originalFamilyName}" -> "${newFamilyName}"`);
+    } else {
+      newFamilyName = originalFamilyName + ' (Atbash Fixed)';
+    }
+
     // Create new font with corrected glyphs
     const newFont = new opentype.Font({
-      familyName: (font.names.fontFamily?.en || font.names.fontFamily || 'Unknown Font') + ' (Atbash Fixed)',
+      familyName: newFamilyName,
       styleName: font.names.fontSubfamily?.en || font.names.fontSubfamily || 'Regular',
       unitsPerEm: font.unitsPerEm || 1000,
       ascender: font.ascender || 800,
