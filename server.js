@@ -331,63 +331,104 @@ app.post('/upload', upload.single('fontFile'), async (req, res) => {
     }
 
     const inputPath = req.file.path;
-    const outputFilename = 'fixed-' + req.file.originalname;
+    const outputFilename = 'fixed-' + req.file.originalname.replace(/\.(woff2?|otf)$/i, '.ttf');
     const outputPath = path.join('output', outputFilename);
 
     // Read the font file
     const fontBuffer = fs.readFileSync(inputPath);
     
+    // Convert Buffer to ArrayBuffer for OpenType.js
+    const arrayBuffer = fontBuffer.buffer.slice(
+      fontBuffer.byteOffset, 
+      fontBuffer.byteOffset + fontBuffer.byteLength
+    );
+    
     // Parse the font
-    const font = opentype.parse(fontBuffer);
+    const font = opentype.parse(arrayBuffer);
+    
+    console.log('Font parsed successfully:');
+    console.log('- Family Name:', font.names.fontFamily?.en || font.names.fontFamily || 'Unknown');
+    console.log('- Number of glyphs:', font.glyphs.length);
+    console.log('- Units per EM:', font.unitsPerEm);
     
     // Create a new font with swapped glyphs
-    const newGlyphs = {};
+    const glyphsArray = [];
     
-    // Copy all existing glyphs first
-    Object.keys(font.glyphs.glyphs).forEach(key => {
-      newGlyphs[key] = font.glyphs.glyphs[key];
-    });
+    // Copy all existing glyphs and build lookup maps
+    const unicodeToGlyph = new Map();
+    const glyphIndexToGlyph = new Map();
+    
+    for (let i = 0; i < font.glyphs.length; i++) {
+      const glyph = font.glyphs.get(i);
+      glyphsArray.push(glyph);
+      glyphIndexToGlyph.set(i, glyph);
+      
+      if (glyph.unicode !== undefined) {
+        unicodeToGlyph.set(glyph.unicode, glyph);
+      }
+      if (glyph.unicodes && glyph.unicodes.length > 0) {
+        glyph.unicodes.forEach(unicode => {
+          unicodeToGlyph.set(unicode, glyph);
+        });
+      }
+    }
     
     // Now swap the Hebrew characters according to Atbash mapping
-    Object.keys(hebrewAtbashMap).forEach(fromUnicode => {
-      const toUnicode = hebrewAtbashMap[fromUnicode];
-      const fromChar = parseInt(fromUnicode);
-      const toChar = parseInt(toUnicode);
+    let swappedCount = 0;
+    Object.keys(hebrewAtbashMap).forEach(fromUnicodeStr => {
+      const toUnicodeStr = hebrewAtbashMap[fromUnicodeStr];
+      const fromUnicode = parseInt(fromUnicodeStr);
+      const toUnicode = parseInt(toUnicodeStr);
       
-      // Find glyphs for these characters
-      const fromGlyph = font.charToGlyph(String.fromCharCode(fromChar));
-      const toGlyph = font.charToGlyph(String.fromCharCode(toChar));
+      const fromGlyph = unicodeToGlyph.get(fromUnicode);
+      const toGlyph = unicodeToGlyph.get(toUnicode);
       
-      if (fromGlyph && toGlyph && fromGlyph.index !== 0 && toGlyph.index !== 0) {
-        // Swap the glyphs - put the "to" glyph in the "from" position
-        newGlyphs[fromGlyph.index] = {
-          ...toGlyph,
-          unicode: fromChar,
-          unicodes: [fromChar]
-        };
+      if (fromGlyph && toGlyph && fromGlyph.index !== toGlyph.index) {
+        // Create new glyph objects with swapped shapes but correct unicode mappings
+        const newFromGlyph = new opentype.Glyph({
+          name: fromGlyph.name || `uni${fromUnicode.toString(16).toUpperCase().padStart(4, '0')}`,
+          unicode: fromUnicode,
+          advanceWidth: toGlyph.advanceWidth || 600,
+          path: toGlyph.path ? toGlyph.path : new opentype.Path()
+        });
         
-        // And put the "from" glyph in the "to" position  
-        newGlyphs[toGlyph.index] = {
-          ...fromGlyph,
-          unicode: toChar,
-          unicodes: [toChar]
-        };
+        const newToGlyph = new opentype.Glyph({
+          name: toGlyph.name || `uni${toUnicode.toString(16).toUpperCase().padStart(4, '0')}`, 
+          unicode: toUnicode,
+          advanceWidth: fromGlyph.advanceWidth || 600,
+          path: fromGlyph.path ? fromGlyph.path : new opentype.Path()
+        });
+        
+        // Replace in the glyphs array
+        if (fromGlyph.index < glyphsArray.length) {
+          glyphsArray[fromGlyph.index] = newFromGlyph;
+        }
+        if (toGlyph.index < glyphsArray.length) {
+          glyphsArray[toGlyph.index] = newToGlyph;
+        }
+        
+        swappedCount++;
       }
     });
+    
+    console.log(`Swapped ${swappedCount} Hebrew character pairs`);
 
     // Create new font with corrected glyphs
     const newFont = new opentype.Font({
-      familyName: font.names.fontFamily.en + ' (Atbash Fixed)',
-      styleName: font.names.fontSubfamily.en,
-      unitsPerEm: font.unitsPerEm,
-      ascender: font.ascender,
-      descender: font.descender,
-      glyphs: Object.values(newGlyphs)
+      familyName: (font.names.fontFamily?.en || font.names.fontFamily || 'Unknown Font') + ' (Atbash Fixed)',
+      styleName: font.names.fontSubfamily?.en || font.names.fontSubfamily || 'Regular',
+      unitsPerEm: font.unitsPerEm || 1000,
+      ascender: font.ascender || 800,
+      descender: font.descender || -200,
+      glyphs: glyphsArray
     });
 
     // Write the corrected font
     const arrayBuffer = newFont.toArrayBuffer();
-    fs.writeFileSync(outputPath, Buffer.from(arrayBuffer));
+    const outputBuffer = Buffer.from(arrayBuffer);
+    fs.writeFileSync(outputPath, outputBuffer);
+    
+    console.log(`Font saved to: ${outputPath} (${outputBuffer.length} bytes)`);
 
     // Clean up uploaded file
     fs.unlinkSync(inputPath);
