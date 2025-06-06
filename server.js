@@ -3,7 +3,7 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const opentype = require('opentype.js');
-const wawoff2 = require('wawoff2');
+const woff2 = require('woff2');
 
 const app = express();
 const port = 3000;
@@ -194,6 +194,8 @@ app.get('/', (req, res) => {
                 <strong>Atbash Mapping:</strong><br>
                 א ↔ ת, ב ↔ ש, ג ↔ ר, ד ↔ ק, ה ↔ צ, ו ↔ פ, ז ↔ ע, ח ↔ ס, ט ↔ נ, י ↔ מ, כ ↔ ל
             </div>
+            
+            <p><strong>Note:</strong> If you encounter issues with WOFF2 files, try converting them to TTF format first using an online font converter.</p>
         </div>
 
         <form id="uploadForm" enctype="multipart/form-data">
@@ -340,12 +342,12 @@ async function prepareFontBuffer(fontBuffer, originalName) {
   if (isWoff2) {
     console.log('Detected WOFF2 format, decompressing...');
     try {
-      await wawoff2.init();
-      const decompressed = wawoff2.decompress(new Uint8Array(arrayBuffer));
+      const decompressed = woff2.decode(Buffer.from(arrayBuffer));
       console.log(`WOFF2 decompressed: ${arrayBuffer.byteLength} -> ${decompressed.byteLength} bytes`);
-      return decompressed.buffer;
+      return decompressed.buffer.slice(decompressed.byteOffset, decompressed.byteOffset + decompressed.byteLength);
     } catch (error) {
-      throw new Error(`Failed to decompress WOFF2: ${error.message}`);
+      console.error('WOFF2 decompression failed:', error.message);
+      throw new Error(`Failed to decompress WOFF2: ${error.message}. Please convert your WOFF2 font to TTF format first using an online converter or fonttools.`);
     }
   }
   
@@ -354,7 +356,10 @@ async function prepareFontBuffer(fontBuffer, originalName) {
   const isWoff = signature.every((byte, index) => byte === woffSignature[index]);
   
   if (isWoff) {
-    throw new Error('WOFF format is not fully supported yet. Please convert to TTF or use WOFF2.');
+    console.log('Detected WOFF format - attempting basic decompression...');
+    // For basic WOFF, we can try to parse it directly with OpenType.js
+    // as it has some WOFF support built-in
+    return arrayBuffer;
   }
   
   console.log('Detected TTF/OTF format');
