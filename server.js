@@ -374,6 +374,11 @@ app.get('/', (req, res) => {
 <body>
     <div class="container">
         <h1>🔄 Hebrew Atbash Font Flipper</h1>
+            <div style="text-align: center; margin-top: 30px;">
+            <button class="gallery-toggle" id="galleryToggle">
+                📚 View Converted BA Fonts Repository
+            </button>
+        </div>
         
         <div class="description">
             <h3>What does this tool do?</h3>
@@ -419,11 +424,6 @@ app.get('/', (req, res) => {
 
         <div class="result" id="result"></div>
         
-        <div style="text-align: center; margin-top: 30px;">
-            <button class="gallery-toggle" id="galleryToggle">
-                📚 View Converted BA Fonts Repository
-            </button>
-        </div>
         
         <div class="gallery-section" id="gallerySection">
             <h2 style="text-align: center; color: #333; margin-bottom: 20px;">
