@@ -3,10 +3,9 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const opentype = require('opentype.js');
-const woff2 = require('woff2');
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -22,11 +21,14 @@ const upload = multer({
   storage: storage,
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    if (ext === '.ttf' || ext === '.woff2' || ext === '.woff' || ext === '.otf') {
+    if (ext === '.ttf' || ext === '.otf') {
       cb(null, true);
     } else {
-      cb(new Error('Only font files are allowed!'), false);
+      cb(new Error('Only TTF and OTF font files are supported. Please convert WOFF/WOFF2 files to TTF first.'), false);
     }
+  },
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
   }
 });
 
@@ -105,6 +107,13 @@ app.get('/', (req, res) => {
             margin: 20px 0;
             border-left: 4px solid #4CAF50;
         }
+        .warning {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border-left: 4px solid #ffc107;
+        }
         .upload-area {
             border: 2px dashed #ccc;
             border-radius: 10px;
@@ -180,6 +189,22 @@ app.get('/', (req, res) => {
             border-radius: 5px;
             margin: 10px 0;
         }
+        .converter-links {
+            margin: 10px 0;
+        }
+        .converter-links a {
+            display: inline-block;
+            margin: 5px 10px 5px 0;
+            padding: 5px 10px;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .converter-links a:hover {
+            background: #0056b3;
+        }
     </style>
 </head>
 <body>
@@ -194,17 +219,26 @@ app.get('/', (req, res) => {
                 <strong>Atbash Mapping:</strong><br>
                 א ↔ ת, ב ↔ ש, ג ↔ ר, ד ↔ ק, ה ↔ צ, ו ↔ פ, ז ↔ ע, ח ↔ ס, ט ↔ נ, י ↔ מ, כ ↔ ל
             </div>
-            
-            <p><strong>Note:</strong> If you encounter issues with WOFF2 files, try converting them to TTF format first using an online font converter.</p>
+        </div>
+
+        <div class="warning">
+            <h3>⚠️ Supported Formats</h3>
+            <p><strong>Currently supported:</strong> TTF and OTF files only</p>
+            <p><strong>Have WOFF/WOFF2?</strong> Convert them to TTF first using one of these free online converters:</p>
+            <div class="converter-links">
+                <a href="https://convertio.co/woff2-ttf/" target="_blank">Convertio</a>
+                <a href="https://cloudconvert.com/woff2-to-ttf" target="_blank">CloudConvert</a>
+                <a href="https://www.fontsquirrel.com/tools/webfont-generator" target="_blank">Font Squirrel</a>
+            </div>
         </div>
 
         <form id="uploadForm" enctype="multipart/form-data">
             <div class="upload-area" id="uploadArea">
                 <h3>📁 Upload Your Font File</h3>
-                <p>Drag and drop your font file here, or click to browse</p>
-                <input type="file" name="fontFile" id="fontFile" accept=".ttf,.woff,.woff2,.otf" required>
+                <p>Drag and drop your TTF or OTF file here, or click to browse</p>
+                <input type="file" name="fontFile" id="fontFile" accept=".ttf,.otf" required>
                 <br>
-                <small>Supported formats: TTF, WOFF, WOFF2, OTF</small>
+                <small>Supported formats: TTF, OTF (max 10MB)</small>
             </div>
             
             <div style="text-align: center;">
@@ -265,6 +299,13 @@ app.get('/', (req, res) => {
                 return;
             }
 
+            // Check file extension
+            const fileName = file.name.toLowerCase();
+            if (!fileName.endsWith('.ttf') && !fileName.endsWith('.otf')) {
+                showResult('Please upload a TTF or OTF file. Use the converters above to convert WOFF/WOFF2 files.', 'error');
+                return;
+            }
+
             formData.append('fontFile', file);
             
             submitBtn.disabled = true;
@@ -300,6 +341,7 @@ app.get('/', (req, res) => {
                         showResult(\`
                             <strong>✅ Success!</strong><br>
                             Your font has been fixed and is ready for download.<br>
+                            <strong>Swapped:</strong> \${data.swappedCount} Hebrew character pairs<br>
                             <a href="/output/\${data.filename}" download style="display: inline-block; margin-top: 10px; padding: 8px 16px; background: #007bff; color: white; text-decoration: none; border-radius: 4px;">📥 Download Fixed Font</a>
                         \`, 'success');
                     } else {
@@ -326,44 +368,12 @@ app.get('/', (req, res) => {
   `);
 });
 
-// Helper function to detect font format and convert to ArrayBuffer
-async function prepareFontBuffer(fontBuffer, originalName) {
-  const arrayBuffer = fontBuffer.buffer.slice(
+// Helper function to prepare font buffer
+function prepareFontBuffer(fontBuffer) {
+  return fontBuffer.buffer.slice(
     fontBuffer.byteOffset, 
     fontBuffer.byteOffset + fontBuffer.byteLength
   );
-  
-  // Check for WOFF2 signature
-  const signature = new Uint8Array(arrayBuffer.slice(0, 4));
-  const woff2Signature = [0x77, 0x4F, 0x46, 0x32]; // 'wOF2'
-  
-  const isWoff2 = signature.every((byte, index) => byte === woff2Signature[index]);
-  
-  if (isWoff2) {
-    console.log('Detected WOFF2 format, decompressing...');
-    try {
-      const decompressed = woff2.decode(Buffer.from(arrayBuffer));
-      console.log(`WOFF2 decompressed: ${arrayBuffer.byteLength} -> ${decompressed.byteLength} bytes`);
-      return decompressed.buffer.slice(decompressed.byteOffset, decompressed.byteOffset + decompressed.byteLength);
-    } catch (error) {
-      console.error('WOFF2 decompression failed:', error.message);
-      throw new Error(`Failed to decompress WOFF2: ${error.message}. Please convert your WOFF2 font to TTF format first using an online converter or fonttools.`);
-    }
-  }
-  
-  // Check for WOFF signature  
-  const woffSignature = [0x77, 0x4F, 0x46, 0x46]; // 'wOFF'
-  const isWoff = signature.every((byte, index) => byte === woffSignature[index]);
-  
-  if (isWoff) {
-    console.log('Detected WOFF format - attempting basic decompression...');
-    // For basic WOFF, we can try to parse it directly with OpenType.js
-    // as it has some WOFF support built-in
-    return arrayBuffer;
-  }
-  
-  console.log('Detected TTF/OTF format');
-  return arrayBuffer;
 }
 
 // Upload and process font
@@ -374,14 +384,16 @@ app.post('/upload', upload.single('fontFile'), async (req, res) => {
     }
 
     const inputPath = req.file.path;
-    const outputFilename = 'fixed-' + req.file.originalname.replace(/\.(woff2?|otf)$/i, '.ttf');
+    const outputFilename = 'fixed-' + req.file.originalname;
     const outputPath = path.join('output', outputFilename);
+
+    console.log(`Processing font: ${req.file.originalname}`);
 
     // Read the font file
     const fontBuffer = fs.readFileSync(inputPath);
     
-    // Convert Buffer to ArrayBuffer and handle different formats
-    const arrayBuffer = await prepareFontBuffer(fontBuffer, req.file.originalname);
+    // Convert Buffer to ArrayBuffer
+    const arrayBuffer = prepareFontBuffer(fontBuffer);
     
     // Parse the font
     const font = opentype.parse(arrayBuffer);
@@ -396,12 +408,10 @@ app.post('/upload', upload.single('fontFile'), async (req, res) => {
     
     // Copy all existing glyphs and build lookup maps
     const unicodeToGlyph = new Map();
-    const glyphIndexToGlyph = new Map();
     
     for (let i = 0; i < font.glyphs.length; i++) {
       const glyph = font.glyphs.get(i);
       glyphsArray.push(glyph);
-      glyphIndexToGlyph.set(i, glyph);
       
       if (glyph.unicode !== undefined) {
         unicodeToGlyph.set(glyph.unicode, glyph);
@@ -476,7 +486,8 @@ app.post('/upload', upload.single('fontFile'), async (req, res) => {
     res.json({ 
       success: true, 
       filename: outputFilename,
-      message: 'Font successfully processed and Atbash encoding corrected!'
+      swappedCount: swappedCount,
+      message: `Font successfully processed! Swapped ${swappedCount} Hebrew character pairs.`
     });
 
   } catch (error) {
@@ -489,9 +500,14 @@ app.post('/upload', upload.single('fontFile'), async (req, res) => {
     
     res.status(500).json({ 
       success: false, 
-      error: 'Failed to process font: ' + error.message 
+      error: error.message 
     });
   }
+});
+
+// Health check endpoint for deployment
+app.get('/health', (req, res) => {
+  res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
 
 // Start server
