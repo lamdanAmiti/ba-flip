@@ -378,6 +378,22 @@ app.get('/', (req, res) => {
             <button class="gallery-toggle" id="galleryToggle">
                 📚 View Converted BA Fonts Repository
             </button>
+               <div class="gallery-section" id="gallerySection">
+            <h2 style="text-align: center; color: #333; margin-bottom: 20px;">
+                🎨 Converted BA Fonts Repository
+            </h2>
+            <p style="text-align: center; color: #666; margin-bottom: 30px;">
+                Browse and download all converted Hebrew fonts. Fonts are grouped by family.
+            </p>
+            
+            <div class="loading-gallery" id="galleryLoading">
+                <div style="font-size: 24px; margin-bottom: 10px;">🔄</div>
+                Loading font repository...
+            </div>
+            
+            <div class="font-families" id="fontFamilies"></div>
+        </div>
+    </div>
         </div>
         
         <div class="description">
@@ -425,22 +441,7 @@ app.get('/', (req, res) => {
         <div class="result" id="result"></div>
         
         
-        <div class="gallery-section" id="gallerySection">
-            <h2 style="text-align: center; color: #333; margin-bottom: 20px;">
-                🎨 Converted BA Fonts Repository
-            </h2>
-            <p style="text-align: center; color: #666; margin-bottom: 30px;">
-                Browse and download all converted Hebrew fonts. Fonts are grouped by family.
-            </p>
-            
-            <div class="loading-gallery" id="galleryLoading">
-                <div style="font-size: 24px; margin-bottom: 10px;">🔄</div>
-                Loading font repository...
-            </div>
-            
-            <div class="font-families" id="fontFamilies"></div>
-        </div>
-    </div>
+     
 
     <script>
         const uploadArea = document.getElementById('uploadArea');
