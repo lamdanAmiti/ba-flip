@@ -3,6 +3,7 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const opentype = require('opentype.js');
+const wawoff2 = require('wawoff2');
 
 const app = express();
 const port = 3000;
@@ -323,6 +324,43 @@ app.get('/', (req, res) => {
   `);
 });
 
+// Helper function to detect font format and convert to ArrayBuffer
+async function prepareFontBuffer(fontBuffer, originalName) {
+  const arrayBuffer = fontBuffer.buffer.slice(
+    fontBuffer.byteOffset, 
+    fontBuffer.byteOffset + fontBuffer.byteLength
+  );
+  
+  // Check for WOFF2 signature
+  const signature = new Uint8Array(arrayBuffer.slice(0, 4));
+  const woff2Signature = [0x77, 0x4F, 0x46, 0x32]; // 'wOF2'
+  
+  const isWoff2 = signature.every((byte, index) => byte === woff2Signature[index]);
+  
+  if (isWoff2) {
+    console.log('Detected WOFF2 format, decompressing...');
+    try {
+      await wawoff2.init();
+      const decompressed = wawoff2.decompress(new Uint8Array(arrayBuffer));
+      console.log(`WOFF2 decompressed: ${arrayBuffer.byteLength} -> ${decompressed.byteLength} bytes`);
+      return decompressed.buffer;
+    } catch (error) {
+      throw new Error(`Failed to decompress WOFF2: ${error.message}`);
+    }
+  }
+  
+  // Check for WOFF signature  
+  const woffSignature = [0x77, 0x4F, 0x46, 0x46]; // 'wOFF'
+  const isWoff = signature.every((byte, index) => byte === woffSignature[index]);
+  
+  if (isWoff) {
+    throw new Error('WOFF format is not fully supported yet. Please convert to TTF or use WOFF2.');
+  }
+  
+  console.log('Detected TTF/OTF format');
+  return arrayBuffer;
+}
+
 // Upload and process font
 app.post('/upload', upload.single('fontFile'), async (req, res) => {
   try {
@@ -337,11 +375,8 @@ app.post('/upload', upload.single('fontFile'), async (req, res) => {
     // Read the font file
     const fontBuffer = fs.readFileSync(inputPath);
     
-    // Convert Buffer to ArrayBuffer for OpenType.js
-    const arrayBuffer = fontBuffer.buffer.slice(
-      fontBuffer.byteOffset, 
-      fontBuffer.byteOffset + fontBuffer.byteLength
-    );
+    // Convert Buffer to ArrayBuffer and handle different formats
+    const arrayBuffer = await prepareFontBuffer(fontBuffer, req.file.originalname);
     
     // Parse the font
     const font = opentype.parse(arrayBuffer);
