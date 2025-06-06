@@ -3,6 +3,7 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const opentype = require('opentype.js');
+const archiver = require('archiver');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -205,6 +206,169 @@ app.get('/', (req, res) => {
         .converter-links a:hover {
             background: #0056b3;
         }
+        
+        .gallery-section {
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 2px solid #e0e0e0;
+            display: none;
+        }
+        
+        .gallery-section.visible {
+            display: block;
+        }
+        
+        .gallery-toggle {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            display: block;
+            margin: 20px auto;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .gallery-toggle:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .font-families {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .font-family-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            transition: all 0.3s ease;
+        }
+        
+        .font-family-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+        
+        .family-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        
+        .font-preview {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            text-align: center;
+            font-size: 24px;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px dashed #ddd;
+        }
+        
+        .font-list {
+            margin-top: 15px;
+        }
+        
+        .font-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .font-item:last-child {
+            border-bottom: none;
+        }
+        
+        .font-info {
+            flex: 1;
+        }
+        
+        .font-name {
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .font-details {
+            font-size: 12px;
+            color: #666;
+            margin-top: 2px;
+        }
+        
+        .download-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: background 0.3s;
+        }
+        
+        .download-btn:hover {
+            background: #218838;
+        }
+        
+        .download-family-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 15px;
+            transition: background 0.3s;
+        }
+        
+        .download-family-btn:hover {
+            background: #0056b3;
+        }
+        
+        .loading-gallery {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .no-fonts {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 2px dashed #ddd;
+        }
+        
+        .hebrew-preview {
+            font-family: inherit;
+            direction: rtl;
+            font-size: 28px;
+            color: #333;
+        }
     </style>
 </head>
 <body>
@@ -254,6 +418,28 @@ app.get('/', (req, res) => {
         </div>
 
         <div class="result" id="result"></div>
+        
+        <div style="text-align: center; margin-top: 30px;">
+            <button class="gallery-toggle" id="galleryToggle">
+                📚 View Converted BA Fonts Repository
+            </button>
+        </div>
+        
+        <div class="gallery-section" id="gallerySection">
+            <h2 style="text-align: center; color: #333; margin-bottom: 20px;">
+                🎨 Converted BA Fonts Repository
+            </h2>
+            <p style="text-align: center; color: #666; margin-bottom: 30px;">
+                Browse and download all converted Hebrew fonts. Fonts are grouped by family.
+            </p>
+            
+            <div class="loading-gallery" id="galleryLoading">
+                <div style="font-size: 24px; margin-bottom: 10px;">🔄</div>
+                Loading font repository...
+            </div>
+            
+            <div class="font-families" id="fontFamilies"></div>
+        </div>
     </div>
 
     <script>
@@ -361,6 +547,166 @@ app.get('/', (req, res) => {
             result.innerHTML = message;
             result.className = 'result ' + type;
             result.style.display = 'block';
+        }
+
+        // Gallery functionality
+        const galleryToggle = document.getElementById('galleryToggle');
+        const gallerySection = document.getElementById('gallerySection');
+        const galleryLoading = document.getElementById('galleryLoading');
+        const fontFamilies = document.getElementById('fontFamilies');
+        
+        let galleryVisible = false;
+        let fontsLoaded = false;
+
+        galleryToggle.addEventListener('click', async () => {
+            galleryVisible = !galleryVisible;
+            
+            if (galleryVisible) {
+                gallerySection.classList.add('visible');
+                galleryToggle.textContent = '📚 Hide Font Repository';
+                
+                if (!fontsLoaded) {
+                    await loadFontGallery();
+                    fontsLoaded = true;
+                }
+            } else {
+                gallerySection.classList.remove('visible');
+                galleryToggle.textContent = '📚 View Converted BA Fonts Repository';
+            }
+        });
+
+        async function loadFontGallery() {
+            try {
+                galleryLoading.style.display = 'block';
+                fontFamilies.innerHTML = '';
+                
+                const response = await fetch('/api/fonts');
+                const data = await response.json();
+                
+                galleryLoading.style.display = 'none';
+                
+                if (data.families.length === 0) {
+                    fontFamilies.innerHTML = \`
+                        <div class="no-fonts">
+                            <div style="font-size: 48px; margin-bottom: 15px;">📝</div>
+                            <h3>No converted fonts yet</h3>
+                            <p>Upload and convert some Hebrew fonts to see them here!</p>
+                        </div>
+                    \`;
+                    return;
+                }
+                
+                data.families.forEach(family => {
+                    const familyCard = createFamilyCard(family);
+                    fontFamilies.appendChild(familyCard);
+                });
+                
+                // Load font previews
+                loadFontPreviews(data.families);
+                
+            } catch (error) {
+                galleryLoading.style.display = 'none';
+                fontFamilies.innerHTML = \`
+                    <div class="no-fonts">
+                        <div style="font-size: 48px; margin-bottom: 15px;">❌</div>
+                        <h3>Error loading fonts</h3>
+                        <p>Please try again later.</p>
+                    </div>
+                \`;
+            }
+        }
+
+        function createFamilyCard(family) {
+            const card = document.createElement('div');
+            card.className = 'font-family-card';
+            
+            const fontItems = family.fonts.map(font => \`
+                <div class="font-item">
+                    <div class="font-info">
+                        <div class="font-name">\${font.styleName}</div>
+                        <div class="font-details">\${font.size} • \${font.modified}</div>
+                    </div>
+                    <a href="/output/\${font.filename}" download class="download-btn">
+                        📥 Download
+                    </a>
+                </div>
+            \`).join('');
+            
+            card.innerHTML = \`
+                <div class="family-name">\${family.name}</div>
+                
+                <div class="font-preview" id="preview-\${family.name.replace(/[^a-zA-Z0-9]/g, '_')}">
+                    <div class="hebrew-preview">אבג</div>
+                </div>
+                
+                <div class="font-list">
+                    \${fontItems}
+                </div>
+                
+                \${family.fonts.length > 1 ? \`
+                    <button class="download-family-btn" onclick="downloadFamily('\${encodeURIComponent(family.name)}')">
+                        📦 Download \${family.name} Family (\${family.fonts.length} fonts)
+                    </button>
+                \` : ''}
+            \`;
+            
+            return card;
+        }
+
+        function loadFontPreviews(families) {
+            families.forEach(family => {
+                // Use the first font in the family for preview
+                const firstFont = family.fonts[0];
+                if (firstFont) {
+                    const fontId = family.name.replace(/[^a-zA-Z0-9]/g, '_');
+                    const fontUrl = \`/output/\${firstFont.filename}\`;
+                    
+                    // Create a unique font-family name for CSS
+                    const fontFamilyName = \`preview_\${fontId}\`;
+                    
+                    // Add font-face rule
+                    const style = document.createElement('style');
+                    style.textContent = \`
+                        @font-face {
+                            font-family: '\${fontFamilyName}';
+                            src: url('\${fontUrl}') format('truetype');
+                            font-display: swap;
+                        }
+                    \`;
+                    document.head.appendChild(style);
+                    
+                    // Apply font to preview
+                    const previewElement = document.getElementById(\`preview-\${fontId}\`);
+                    if (previewElement) {
+                        const hebrewText = previewElement.querySelector('.hebrew-preview');
+                        if (hebrewText) {
+                            hebrewText.style.fontFamily = \`'\${fontFamilyName}', 'Times New Roman', serif\`;
+                        }
+                    }
+                }
+            });
+        }
+
+        async function downloadFamily(familyName) {
+            try {
+                const response = await fetch(\`/api/download-family/\${familyName}\`);
+                
+                if (!response.ok) {
+                    throw new Error('Failed to download family');
+                }
+                
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = \`\${familyName.replace(/[^a-zA-Z0-9]/g, '_')}_family.zip\`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            } catch (error) {
+                alert('Error downloading font family: ' + error.message);
+            }
         }
     </script>
 </body>
@@ -514,6 +860,109 @@ app.post('/upload', upload.single('fontFile'), async (req, res) => {
       success: false, 
       error: error.message 
     });
+  }
+});
+
+// Get all converted fonts grouped by family
+app.get('/api/fonts', (req, res) => {
+  try {
+    const outputDir = path.join(__dirname, 'output');
+    
+    if (!fs.existsSync(outputDir)) {
+      return res.json({ families: [] });
+    }
+
+    const files = fs.readdirSync(outputDir).filter(file => 
+      file.endsWith('.ttf') || file.endsWith('.otf')
+    );
+
+    // Group fonts by family
+    const families = {};
+    
+    files.forEach(filename => {
+      const filePath = path.join(outputDir, filename);
+      const stats = fs.statSync(filePath);
+      
+      // Extract family name (everything before the last space + weight/style)
+      const nameWithoutExt = filename.replace(/\.(ttf|otf)$/i, '');
+      const cleanName = nameWithoutExt.replace(/^fixed-/, '');
+      
+      // Try to extract family and style
+      let familyName, styleName;
+      
+      // Look for common style keywords
+      const styleKeywords = ['Light', 'Regular', 'Medium', 'Bold', 'Black', 'Thin', 'Heavy', 'Italic', 'Oblique'];
+      const foundStyle = styleKeywords.find(style => cleanName.includes(style));
+      
+      if (foundStyle) {
+        familyName = cleanName.replace(foundStyle, '').trim();
+        styleName = foundStyle;
+      } else {
+        familyName = cleanName;
+        styleName = 'Regular';
+      }
+      
+      if (!families[familyName]) {
+        families[familyName] = {
+          name: familyName,
+          fonts: []
+        };
+      }
+      
+      families[familyName].fonts.push({
+        filename,
+        styleName,
+        size: Math.round(stats.size / 1024) + ' KB',
+        modified: stats.mtime.toLocaleDateString()
+      });
+    });
+
+    // Sort families alphabetically and fonts within families by style
+    const sortedFamilies = Object.values(families).map(family => ({
+      ...family,
+      fonts: family.fonts.sort((a, b) => a.styleName.localeCompare(b.styleName))
+    })).sort((a, b) => a.name.localeCompare(b.name));
+
+    res.json({ families: sortedFamilies });
+  } catch (error) {
+    console.error('Error getting fonts:', error);
+    res.status(500).json({ error: 'Failed to get fonts' });
+  }
+});
+
+// Download font family as ZIP
+app.get('/api/download-family/:familyName', (req, res) => {
+  try {
+    const familyName = decodeURIComponent(req.params.familyName);
+    const outputDir = path.join(__dirname, 'output');
+    
+    const files = fs.readdirSync(outputDir).filter(file => {
+      const cleanName = file.replace(/^fixed-/, '').replace(/\.(ttf|otf)$/i, '');
+      return cleanName.startsWith(familyName) && (file.endsWith('.ttf') || file.endsWith('.otf'));
+    });
+
+    if (files.length === 0) {
+      return res.status(404).json({ error: 'Family not found' });
+    }
+
+    const archive = archiver('zip', {
+      zlib: { level: 9 }
+    });
+
+    const zipFilename = `${familyName.replace(/[^a-zA-Z0-9]/g, '_')}_family.zip`;
+    
+    res.attachment(zipFilename);
+    archive.pipe(res);
+
+    files.forEach(file => {
+      const filePath = path.join(outputDir, file);
+      archive.file(filePath, { name: file });
+    });
+
+    archive.finalize();
+  } catch (error) {
+    console.error('Error creating family ZIP:', error);
+    res.status(500).json({ error: 'Failed to create ZIP' });
   }
 });
 
